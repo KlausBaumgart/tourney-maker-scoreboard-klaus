@@ -1,21 +1,34 @@
 #include <Arduino.h>
-#include <ostream>
+#include <scoreboard.h>
 
-// put function declarations here:
-int myFunction(int, int);
+TourneyMakerScoreboard *scoreboard = NULL;
 
-void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);ghhgh
-  int result = myFunction(2, 3);
+class MyScoreReceivedCallback : public ScoreboardChangedCallback
+{
+  void onScoreReceived(uint8_t score1, uint8_t score2)
+  {
+    Serial.println("score received in callback " + String(score1) + ":" + String(score2));
+  }
+
+  void onColorReceived(uint32_t color1, uint32_t color2) {
+    Serial.println("color received in callback " + String(color1) + ":" + String(color2));
+  }
+};
+
+void setup()
+{
+  Serial.begin(9600);
+
+  scoreboard = TourneyMakerScoreboard::setup("Papa");
+
+  scoreboard->scoreboardChangedCallback = new MyScoreReceivedCallback();
+
 }
 
-void loop() {
-  // put your main code here, to run repeatedly:
-  Serial.print("sdf");
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+void loop()
+{
+  Serial.print("loop");
+  sleep(5);
+  Serial.print("test");
+  scoreboard->setScore(5, 0);
 }

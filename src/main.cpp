@@ -2,10 +2,73 @@
 // Verzögerte aktivierung
 // Sensoren bleiben aktiv und setzen sich erts nach ca. 10 Sekunden zurück
 // deepsleep und lightsleep
-#include <Arduino.h>
+// Beschreibung I2C Anschlüsse
+// VIN = rt
+// SHDN = ge
+// VREF_IN = ws
+// SCL_IN = bl
+// SDA_IN = gn
+// GND = sw
+
+
 #include <scoreboard.h>
+#include <Wire.h>
 
 TourneyMakerScoreboard *scoreboard = NULL;
+
+
+String padToLength(const String& input, char padChar, int numModules) {
+    if (input.length() >= numModules) return input;
+    return padToLength(String(padChar) + input, padChar, numModules);
+}
+
+void sendI2CData(const String &rawContent, int numModules, uint8_t i2c_address) {
+    String content = padToLength(rawContent, '0', numModules);
+
+    Serial.println("sending data '" + content + "'...");
+
+    // Define buffer size as 5 header bytes + numModules characters + 3 for checksum and ETX
+    int bufferSize = 5 + numModules + 3;
+    uint8_t buffer[bufferSize];
+ 
+    // Fill header bytes
+    buffer[0] = 0x02;                      // STX (Start of Text)
+    buffer[1] = ((numModules + 2) >> 8);   // Length High byte
+    buffer[2] = (numModules + 2) & 0xFF;   // Length Low byte
+    buffer[3] = numModules;                // Number of modules
+    buffer[4] = 0x01;                      // Mode (Segment mode by default)
+ 
+    // Fill content in ASCII values, adding ASCII 32 (space) if content is shorter than numModules
+    int contentSize = content.length();
+    for (int i = 0; i < numModules; i++) {
+        buffer[5 + i] = (i < contentSize) ? content[i] : 32;  // ASCII 32 for space
+    }
+ 
+    // Compute checksum from buffer[3] to buffer[numModules + 4]
+    uint16_t checksum = 0;
+    for (int i = 3; i < 5 + numModules; i++) {
+        checksum += buffer[i];
+    }
+ 
+    // Add checksum and end character to buffer
+    buffer[5 + numModules] = (checksum >> 8);        // Checksum High byte
+    buffer[6 + numModules] = checksum & 0xFF;        // Checksum Low byte
+    buffer[7 + numModules] = 0x03;                   // ETX (End of Text)
+ 
+    // Send data over I2C
+    Wire.begin();
+    Wire.setClock(10000);
+    Wire.beginTransmission(i2c_address);
+    for (int i = 0; i < bufferSize; i++) {
+        Wire.write(buffer[i]);
+        if (i != 0) Serial.print("-");
+        Serial.print(buffer[i]);
+        delay(10);
+    }
+    Serial.println();
+    Wire.endTransmission();
+}
+
 
 class MyScoreReceivedCallback : public ScoreboardChangedCallback
 {
@@ -20,7 +83,7 @@ class MyScoreReceivedCallback : public ScoreboardChangedCallback
 };
 
 
-
+#define i2cAddress 8        // Define the I2C address of the device
 
 
 // Pins für die Buttons
@@ -119,64 +182,62 @@ void loop() {
     bool isPressed = digitalRead(pin) == HIGH;
 
     if (buttonPressed[i]) {
-  // Taste wird gehalten
-  if (isPressed) {
-    unsigned long heldTime = currentTime - pressTime[i];
+      // Taste wird gehalten
+      if (isPressed) {
+        unsigned long heldTime = currentTime - pressTime[i];
 
-    if (heldTime >= activationDelay) {
-      // Jetzt ist die Verzögerung vorbei: Taste gilt als "wirklich gedrückt"
+        if (heldTime >= activationDelay) {
+          // Jetzt ist die Verzögerung vorbei: Taste gilt als "wirklich gedrückt"
 
-      // --- einmalige Aktion bei Kurz-Druck
-      if (!actionDone[i] && heldTime < longPress) {
-        if (i == 0) handleButtonAction(i, rightNumber, +1, "Btn1:");
-        if (i == 1) handleButtonAction(i, rightNumber, -1, "Btn2:");
-        if (i == 2) handleButtonAction(i, leftNumber, +1, "Btn3:");
-        if (i == 3) handleButtonAction(i, leftNumber, -1, "Btn4:");
-        actionDone[i] = true;
+          // --- einmalige Aktion bei Kurz-Druck
+          if (!actionDone[i] && heldTime < longPress) {
+            if (i == 0) handleButtonAction(i, rightNumber, +1, "Btn1:");
+            if (i == 1) handleButtonAction(i, rightNumber, -1, "Btn2:");
+            if (i == 2) handleButtonAction(i, leftNumber, +1, "Btn3:");
+            if (i == 3) handleButtonAction(i, leftNumber, -1, "Btn4:");
+            actionDone[i] = true;
+          }
+
+          // --- Wiederholung bei Lang-Druck
+          if (heldTime >= longPress && (currentTime - lastActionTime[i] >= repeatInterval)) {
+            if (i == 0) handleButtonAction(i, rightNumber, +1, "Btn1:");
+            if (i == 1) handleButtonAction(i, rightNumber, -1, "Btn2:");
+            if (i == 2) handleButtonAction(i, leftNumber, +1, "Btn3:");
+            if (i == 3) handleButtonAction(i, leftNumber, -1, "Btn4:");
+          }
+        }   
+     }
+
+    // Taste wurde losgelassen
+      if (!isPressed) {
+        buttonPressed[i] = false;
+        actionDone[i] = false;
       }
+    } 
+  }
 
-      // --- Wiederholung bei Lang-Druck
-      if (heldTime >= longPress && (currentTime - lastActionTime[i] >= repeatInterval)) {
-        if (i == 0) handleButtonAction(i, rightNumber, +1, "Btn1:");
-        if (i == 1) handleButtonAction(i, rightNumber, -1, "Btn2:");
-        if (i == 2) handleButtonAction(i, leftNumber, +1, "Btn3:");
-        if (i == 3) handleButtonAction(i, leftNumber, -1, "Btn4:");
+
+  if (buttonPressed[4]) {
+    bool isPressed = digitalRead(btn5) == HIGH;
+
+    if (isPressed) {
+      unsigned long heldTime = currentTime - pressTime[4];
+
+      if (heldTime >= activationDelay && heldTime > 1000 && !actionDone[4]) {
+        leftNumber = 0;
+        rightNumber = 0;
+        Serial.println("Reset beide Zahlen auf 0");
+        scoreboard->setScore(leftNumber, rightNumber);
+        sendI2CData(String(rightNumber),2,i2cAddress);
+        blinkLED();
+        actionDone[4] = true;
       }
     }
-  }
 
-  // Taste wurde losgelassen
-  if (!isPressed) {
-    buttonPressed[i] = false;
-    actionDone[i] = false;
-  }
-}
-
-}
-
-
-if (buttonPressed[4]) {
-  bool isPressed = digitalRead(btn5) == HIGH;
-
-  if (isPressed) {
-    unsigned long heldTime = currentTime - pressTime[4];
-
-    if (heldTime >= activationDelay && heldTime > 1000 && !actionDone[4]) {
-      leftNumber = 0;
-      rightNumber = 0;
-      Serial.println("Reset beide Zahlen auf 0");
-      scoreboard->setScore(leftNumber, rightNumber);
-      blinkLED();
-      actionDone[4] = true;
+    if (!isPressed) {
+      buttonPressed[4] = false;
+      actionDone[4] = false;
     }
   }
-
-  if (!isPressed) {
-    buttonPressed[4] = false;
-    actionDone[4] = false;
-  }
-}
-
-
 
 }

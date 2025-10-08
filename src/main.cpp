@@ -3,12 +3,12 @@
 // Sensoren bleiben aktiv und setzen sich erts nach ca. 10 Sekunden zurück
 // deepsleep und lightsleep
 // Beschreibung I2C Anschlüsse
-// VIN = rt
-// SHDN = ge
-// VREF_IN = ws
-// SCL_IN = bl
-// SDA_IN = gn
-// GND = sw
+// VIN = rt = 5V
+// SHDN = ge = 5V
+// VREF_IN = ws =3V3
+// SCL_IN = bl = P22
+// SDA_IN = gn = P21
+// GND = sw = GND
 
 
 #include <scoreboard.h>
@@ -158,9 +158,12 @@ void blinkLED() {
 void handleButtonAction(int index, int &value, int delta, const char* label) {
   value += delta;
   Serial.print(label);
+  sendI2CData(String((leftNumber * 10 + rightNumber)),2,i2cAddress);
   scoreboard->setScore(leftNumber, rightNumber);
   Serial.print(" Left: "); Serial.print(leftNumber);
   Serial.print(" Right: "); Serial.println(rightNumber);
+  Serial.println( String((leftNumber + rightNumber)));
+  Serial.println( String((leftNumber * 10 + rightNumber)));
   blinkLED();
   lastActionTime[index] = millis();
   actionDone[index] = true;

@@ -70,18 +70,6 @@ void sendI2CData(const String &rawContent, int numModules, uint8_t i2c_address) 
 }
 
 
-class MyScoreReceivedCallback : public ScoreboardChangedCallback
-{
-  void onScoreReceived(uint8_t score1, uint8_t score2)
-  {
-    Serial.println("score received in callback " + String(score1) + ":" + String(score2));
-  }
-
-  void onColorReceived(uint32_t color1, uint32_t color2) {
-    Serial.println("color received in callback " + String(color1) + ":" + String(color2));
-  }
-};
-
 
 #define i2cAddress 8        // Define the I2C address of the device
 
@@ -121,12 +109,33 @@ void IRAM_ATTR handleButton3() { buttonPressed[2] = true; pressTime[2] = millis(
 void IRAM_ATTR handleButton4() { buttonPressed[3] = true; pressTime[3] = millis(); }
 void IRAM_ATTR handleButton5() { buttonPressed[4] = true; pressTime[4] = millis(); }
 
+
+class MyScoreReceivedCallback : public ScoreboardChangedCallback
+{
+  void onScoreReceived(uint8_t score1, uint8_t score2)
+  {
+    Serial.println("score received in callback " + String(score1) + ":" + String(score2));
+    leftNumber = score1;
+    rightNumber = score2;
+
+    // sendI2CData(String(score2), 2, i2cAddress);
+      sendI2CData(String((leftNumber * 10 + rightNumber)),2,i2cAddress);
+
+  }
+
+  void onColorReceived(uint32_t color1, uint32_t color2) {
+    // Serial.println("color received in callback " + String(color1) + ":" + String(color2));
+  }
+};
+
+
 void setup() {
   Serial.begin(9600);
 
   scoreboard = TourneyMakerScoreboard::setup("Papa");
 
   scoreboard->scoreboardChangedCallback = new MyScoreReceivedCallback();
+  
 
 
   pinMode(btn1, INPUT_PULLUP);
@@ -172,6 +181,10 @@ void handleButtonAction(int index, int &value, int delta, const char* label) {
 
 void loop() {
   unsigned long currentTime = millis();
+
+  
+ 
+
 
 
   // Serial.print("loop");
@@ -231,7 +244,9 @@ void loop() {
         rightNumber = 0;
         Serial.println("Reset beide Zahlen auf 0");
         scoreboard->setScore(leftNumber, rightNumber);
-        sendI2CData(String(rightNumber),2,i2cAddress);
+        // sendI2CData(String(rightNumber),2,i2cAddress);
+          sendI2CData(String((leftNumber * 10 + rightNumber)),2,i2cAddress);
+
         blinkLED();
         actionDone[4] = true;
       }
@@ -242,5 +257,6 @@ void loop() {
       actionDone[4] = false;
     }
   }
+
 
 }
